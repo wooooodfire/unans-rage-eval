@@ -15,6 +15,23 @@
   div.dataTables_wrapper { width: 100%; }
   table.dataframe { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.dataframe td, table.dataframe th { white-space: normal; word-break: break-word; }
+  /* verdict 標籤 */
+  .label-accept{background:#28a745;color:#fff;padding:2px 6px;border-radius:4px;font-weight:600}
+  .label-unanswer{background:#d9534f;color:#fff;padding:2px 6px;border-radius:4px;font-weight:600}
+  .label-unknown{background:#fd7e14;color:#fff;padding:2px 6px;border-radius:4px;font-weight:600}
+  /* 固定前兩欄 (index, question, answer) 的寬度與 sticky 行為 */
+  table.dataframe th:nth-child(1), table.dataframe td:nth-child(1) { width:48px; max-width:48px; }
+  table.dataframe th:nth-child(2), table.dataframe td:nth-child(2) { width:520px; max-width:520px; }
+  table.dataframe th:nth-child(3), table.dataframe td:nth-child(3) { width:420px; max-width:420px; }
+  /* sticky for question (2nd col) and answer (3rd col) */
+  table.dataframe th:nth-child(2), table.dataframe td:nth-child(2) {
+    position: -webkit-sticky; position: sticky; left: 48px; z-index: 5; background: #fff;
+  }
+  table.dataframe th:nth-child(3), table.dataframe td:nth-child(3) {
+    position: -webkit-sticky; position: sticky; left: 568px; z-index: 5; background: #fff;
+  }
+  /* ensure header cells sit above sticky columns */
+  table.dataframe thead th { z-index: 6; }
 </style>
 
 <!-- 篩選控制 -->
@@ -24,6 +41,17 @@
   <span style="color:#666; font-size:0.9em;">（選擇後自動套用）</span>
 </div>
 
+<!-- 統計摘要 -->
+<div id="statsSummary" style="margin:8px 0; font-size:0.95em; color:#333;">
+  <!-- 會被 JS 填入統計數據 -->
+</div>
+
+
+
+
+
+
+<div>
 <table id="dfTable" border="1" class="dataframe display">
   <thead>
     <tr style="text-align: right;">
@@ -939,6 +967,7 @@
     </tr>
   </tbody>
 </table>
+</div>
 
 <!-- Scripts: jQuery + DataTables + FixedHeader -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -946,7 +975,22 @@
 <script src="https://cdn.datatables.net/fixedheader/3.4.2/js/dataTables.fixedHeader.min.js"></script>
 <script>
   $(document).ready(function(){
-    // initialize DataTable
+    // initialize DataTable with render for verdict labels
+    function verdictLabel(v, axis){
+      v = String(v).trim();
+      axis = axis || 'answerable';
+      if(axis === 'answerable'){
+        if(v === '1') return 'answered (1)';
+        if(v === '-1') return 'unanswered (-1)';
+        if(v === '0') return 'ask-for-clarification (0)';
+      } else if(axis === 'acceptable'){
+        if(v === '1') return 'acceptable (1)';
+        if(v === '-1') return 'unacceptable (-1)';
+        if(v === '0') return 'ask-for-clarification (0)';
+      }
+      return v;
+    }
+
     var table = $('#dfTable').DataTable({
       scrollY: false,
       scrollX: false,
@@ -954,7 +998,23 @@
       fixedHeader: true,
       order: [],
       autoWidth: false,
-      columnDefs: [ { targets: 0, searchable: false } ]
+      columnDefs: [
+        { targets: 0, searchable: false },
+        { targets: 5, render: function(data, type, row, meta){
+          var v = String(data).trim();
+          var axis = 'answerable';
+          var label = verdictLabel(v, axis);
+          var cls = (v==='1'? 'label-accept' : (v==='-1'? 'label-unanswer' : 'label-unknown'));
+          return '<span class="' + cls + '" title="raw: ' + v + '">' + label + '</span>';
+        } },
+        { targets: 6, render: function(data, type, row, meta){
+          var v = String(data).trim();
+          var axis = 'acceptable';
+          var label = verdictLabel(v, axis);
+          var cls = (v==='1'? 'label-accept' : (v==='-1'? 'label-unanswer' : 'label-unknown'));
+          return '<span class="' + cls + '" title="raw: ' + v + '">' + label + '</span>';
+        } }
+      ]
     });
 
     // populate category filter from column (0-based index: 4)
@@ -971,6 +1031,54 @@
       if(val) table.column(colIdx).search('^' + val + '$', true, false).draw();
       else table.column(colIdx).search('').draw();
     });
+    
+    // statistics: count pairings of answerable_verdict (col 5) and acceptable_verdict (col 6)
+    function updateStats(){
+      var a = table.column(5, {search:'applied'}).data().toArray();
+      var b = table.column(6, {search:'applied'}).data().toArray();
+      var total = a.length;
+      var counts = {};
+      function rawNum(x){
+        if(x === null || x === undefined) return '';
+        var s = String(x);
+        // try to extract first integer (handles HTML like <span>...)</span>)
+        var m = s.match(/(-?\d+)/);
+        if(m) return m[1];
+        return s.trim();
+      }
+      for(var i=0;i<total;i++){
+        var ai = rawNum(a[i]);
+        var bi = rawNum(b[i]);
+        var key = ai + ' | ' + bi;
+        counts[key] = (counts[key]||0) + 1;
+      }
+      // build html with readable English labels
+      var html = '<strong>Pair statistics (answerable | acceptable):</strong> total ' + total + ' rows<br/>';
+      html += '<div style="margin-top:6px;">';
+      var pairs = [['1','1'],['1','-1'],['-1','1'],['-1','-1']];
+      pairs.forEach(function(p){
+        var k = p[0] + ' | ' + p[1];
+        var c = counts[k]||0;
+        var pct = total?(' ('+((c/total*100).toFixed(1))+'%)'):' (0%)';
+        html += '<div style="margin-bottom:4px;">' + verdictLabel(p[0], 'answerable') + '  |  ' + verdictLabel(p[1], 'acceptable') + ': <strong>' + c + '</strong>' + pct + '</div>';
+      });
+      // include any other observed pairs
+      Object.keys(counts).forEach(function(k){
+        if(['1 | 1','1 | -1','-1 | 1','-1 | -1'].indexOf(k)===-1){
+          var parts = k.split(' | ');
+          var c = counts[k];
+          html += '<div style="margin-bottom:4px;">' + verdictLabel(parts[0], 'answerable') + '  |  ' + verdictLabel(parts[1], 'acceptable') + ': <strong>' + c + '</strong>' + (total?(' ('+((c/total*100).toFixed(1))+'%)'):' (0%)') + '</div>';
+        }
+      });
+      html += '</div>';
+      // legend (English)
+      html += '<div style="margin-top:8px; color:#555; font-size:0.9em;">Legend: <span class="label-unanswer">unanswered / unacceptable</span> <span style="margin-left:8px" class="label-accept">answered / acceptable</span> <span style="margin-left:8px" class="label-unknown">ask-for-clarification</span></div>';
+      $('#statsSummary').html(html);
+    }
+
+    // update stats on draw and initial
+    table.on('draw', updateStats);
+    updateStats();
   });
 </script>
 </div>
