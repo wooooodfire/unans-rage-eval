@@ -23,11 +23,11 @@
   table.dataframe th:nth-child(1), table.dataframe td:nth-child(1) { width:48px; max-width:48px; }
   table.dataframe th:nth-child(2), table.dataframe td:nth-child(2) { width:520px; max-width:520px; }
   table.dataframe th:nth-child(3), table.dataframe td:nth-child(3) { width:420px; max-width:420px; }
-  /* sticky for question (2nd col) and answer (3rd col) */
-  table.dataframe th:nth-child(2), table.dataframe td:nth-child(2) {
+  /* sticky for question (2nd col) and answer (3rd col) body cells only */
+  table.dataframe tbody td:nth-child(2) {
     position: -webkit-sticky; position: sticky; left: 48px; z-index: 5; background: #fff;
   }
-  table.dataframe th:nth-child(3), table.dataframe td:nth-child(3) {
+  table.dataframe tbody td:nth-child(3) {
     position: -webkit-sticky; position: sticky; left: 568px; z-index: 5; background: #fff;
   }
   /* ensure header cells sit above sticky columns */
